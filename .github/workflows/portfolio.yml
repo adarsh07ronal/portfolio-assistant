@@ -5,6 +5,8 @@ on:
     - cron: '30 12 * * 1-5'   # 6PM IST
   workflow_dispatch:
 
+permissions:
+  contents: write
 jobs:
   run-portfolio:
     runs-on: ubuntu-latest
