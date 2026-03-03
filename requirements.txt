@@ -1,3 +1,4 @@
-yfinance
 pandas
-pytest
+numpy
+yfinance
+openpyxl
