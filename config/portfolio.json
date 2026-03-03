@@ -1,0 +1,7 @@
+{
+  "base_currency": "JPY",
+  "holdings": [
+    { "symbol": "AAPL", "quantity": 10, "currency": "USD" },
+    { "symbol": "TCS.NS", "quantity": 15, "currency": "INR" }
+  ]
+}
