@@ -7,6 +7,8 @@ from providers.yfinance_provider import YFinanceProvider
 from providers.yfinance_fx_provider import YFinanceFXProvider
 from providers.zerodha_excel_provider import ZerodhaExcelProvider
 from providers.benchmark_provider import BenchmarkProvider
+from infrastructure.telegram_notifier import TelegramNotifier
+
 
 from services.valuation_service import ValuationService
 from services.performance_service import PerformanceService
@@ -59,7 +61,7 @@ def main():
     price_provider = YFinanceProvider()
     fx_provider = YFinanceFXProvider()
     benchmark_provider = BenchmarkProvider()
-
+    notifier = TelegramNotifier()
     valuation_service = ValuationService()
     performance_service = PerformanceService()
     cache = SnapshotCache()
@@ -154,7 +156,14 @@ def main():
     # ---------------------------------------------------
     print("\n📊 Portfolio Valuation Result:\n")
     print(json.dumps(result, indent=2))
-    send_telegram(result)
+    summary = f"""
+    📊 Portfolio Update
+
+    Total Value: ₹{result["total_value"]:,.0f}
+    Daily P&L %: {result["daily_pl_percent"]:.2f}%
+    """
+
+    notifier.send(summary)
 
 
 # ---------------------------------------------------
