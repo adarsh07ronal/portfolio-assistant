@@ -8,6 +8,7 @@ from providers.yfinance_fx_provider import YFinanceFXProvider
 from providers.zerodha_excel_provider import ZerodhaExcelProvider
 from providers.benchmark_provider import BenchmarkProvider
 from infrastructure.telegram_notifier import TelegramNotifier
+from services.alert_service import AlertService
 
 
 from services.valuation_service import ValuationService
@@ -151,6 +152,9 @@ def main():
         result["beta_vs_nifty"] = 0.0
         result["alpha_vs_nifty"] = 0.0
 
+    alert_service = AlertService()
+    message = alert_service.build_summary_message(result)
+
     # ---------------------------------------------------
     # 6️⃣ Print Result
     # ---------------------------------------------------
@@ -164,6 +168,7 @@ def main():
     """
 
     notifier.send(summary)
+    notifier.send(message)
 
 
 # ---------------------------------------------------

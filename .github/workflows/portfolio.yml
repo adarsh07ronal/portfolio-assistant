@@ -4,7 +4,7 @@ env:
   TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 on:
   schedule:
-    - cron: '30 12 * * 1-5'   # 6PM IST
+    - cron: '0 9 * * 1-5'   # 6PM IST
   workflow_dispatch:
 
 permissions:
