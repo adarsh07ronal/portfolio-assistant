@@ -1,5 +1,7 @@
 name: Portfolio Daily Run
-
+env:
+  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 on:
   schedule:
     - cron: '30 12 * * 1-5'   # 6PM IST

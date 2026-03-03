@@ -1,4 +1,6 @@
 import json
+import requests
+import os
 from pathlib import Path
 
 from providers.yfinance_provider import YFinanceProvider
@@ -14,6 +16,20 @@ from infrastructure.cache import SnapshotCache
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+
+def send_telegram(message):
+    token = os.environ["TELEGRAM_TOKEN"]
+    chat_id = os.environ["TELEGRAM_CHAT_ID"]
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    
+    payload = {
+        "chat_id": chat_id,
+        "text": message
+    }
+
+    requests.post(url, data=payload)
 
 # ---------------------------------------------------
 # Load Portfolio
@@ -138,6 +154,7 @@ def main():
     # ---------------------------------------------------
     print("\n📊 Portfolio Valuation Result:\n")
     print(json.dumps(result, indent=2))
+    send_telegram(result)
 
 
 # ---------------------------------------------------
