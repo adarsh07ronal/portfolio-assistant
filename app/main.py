@@ -1,38 +1,18 @@
 import json
-import requests
-import os
 from pathlib import Path
 
 from providers.yfinance_provider import YFinanceProvider
-from providers.yfinance_fx_provider import YFinanceFXProvider
-from providers.zerodha_excel_provider import ZerodhaExcelProvider
 from providers.benchmark_provider import BenchmarkProvider
+from providers.zerodha_excel_provider import ZerodhaExcelProvider
 from infrastructure.telegram_notifier import TelegramNotifier
+from infrastructure.cache import SnapshotCache
 from services.alert_service import AlertService
-
-
 from services.valuation_service import ValuationService
 from services.performance_service import PerformanceService
-
-from infrastructure.cache import SnapshotCache
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
-
-def send_telegram(message):
-    token = os.environ["TELEGRAM_TOKEN"]
-    chat_id = os.environ["TELEGRAM_CHAT_ID"]
-
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    
-    payload = {
-        "chat_id": chat_id,
-        "text": message
-    }
-
-    requests.post(url, data=payload)
 
 # ---------------------------------------------------
 # Load Portfolio
@@ -60,54 +40,29 @@ def main():
     portfolio = load_portfolio()
 
     price_provider = YFinanceProvider()
-    fx_provider = YFinanceFXProvider()
     benchmark_provider = BenchmarkProvider()
-    notifier = TelegramNotifier()
     valuation_service = ValuationService()
     performance_service = PerformanceService()
     cache = SnapshotCache()
+    notifier = TelegramNotifier()
+    alert_service = AlertService()
 
     price_map = {}
     fx_map = {}
 
-    # ---------------------------------------------------
-    # 1️⃣ Fetch Prices (safe)
-    # ---------------------------------------------------
+    # 1️⃣ Fetch Prices
     for holding in portfolio.holdings:
         try:
-            snapshot = price_provider.get_price(holding.symbol)
-            price_map[holding.symbol] = snapshot
+            price = price_provider.get_price(holding.symbol)
+            price_map[holding.symbol] = price
         except Exception as e:
             print(f"⚠️ Skipping {holding.symbol}: {e}")
 
-    # Filter holdings with valid prices
-    valid_holdings = [
-        h for h in portfolio.holdings
-        if h.symbol in price_map
-    ]
+    # 2️⃣ FX (simple INR-only assumption)
+    for holding in portfolio.holdings:
+        fx_map[(holding.currency, portfolio.base_currency)] = 1.0
 
-    # Create NEW portfolio object (important if dataclass is frozen)
-    from domain.models import Portfolio
-    portfolio = Portfolio(
-        base_currency=portfolio.base_currency,
-        holdings=valid_holdings
-    )
-
-    # ---------------------------------------------------
-    # 2️⃣ Fetch FX rates
-    # ---------------------------------------------------
-    currencies = {h.currency for h in portfolio.holdings}
-
-    for currency in currencies:
-        if currency == portfolio.base_currency:
-            fx_map[(currency, portfolio.base_currency)] = 1.0
-        else:
-            rate = fx_provider.get_rate(currency, portfolio.base_currency)
-            fx_map[(currency, portfolio.base_currency)] = rate
-
-    # ---------------------------------------------------
     # 3️⃣ Value Portfolio
-    # ---------------------------------------------------
     result = valuation_service.value_portfolio(
         portfolio,
         price_map,
@@ -117,57 +72,43 @@ def main():
     # Save snapshot
     cache.save(result)
 
-    # ---------------------------------------------------
-    # 4️⃣ Performance Metrics
-    # ---------------------------------------------------
+    # 4️⃣ Performance
     snapshots = cache.load()
-    print("TYPE:", type(snapshots))
-    print("VALUE:", snapshots)
+
     portfolio_returns = performance_service.compute_returns(snapshots)
 
     result["annualized_volatility"] = performance_service.annualized_volatility(snapshots)
     result["max_drawdown"] = performance_service.max_drawdown(snapshots)
     result["sharpe_ratio"] = performance_service.sharpe_ratio(snapshots)
 
-    # ---------------------------------------------------
-    # 5️⃣ Benchmark Comparison (NIFTY 50)
-    # ---------------------------------------------------
+    # 5️⃣ Benchmark Comparison
     if len(snapshots) > 1:
-        start_date = snapshots[0][0]
-        nifty_returns = benchmark_provider.get_returns("^NSEI", start_date)
+        start_date = snapshots[0].date
+
         benchmark_returns = benchmark_provider.get_returns(
-    "^NSEI",
-    start_date="2024-01-01"
-)
+            "^NSEI",
+            start_date=start_date
+        )
+
         benchmark_metrics = performance_service.benchmark_analysis(
             portfolio_returns,
             benchmark_returns
         )
-        beta = performance_service.beta(portfolio_returns, nifty_returns)
-        alpha = performance_service.alpha(portfolio_returns, nifty_returns)
+
         result.update(benchmark_metrics)
-        result["beta_vs_nifty"] = beta
-        result["alpha_vs_nifty"] = alpha
+
     else:
         result["beta_vs_nifty"] = 0.0
         result["alpha_vs_nifty"] = 0.0
+        result["correlation_vs_nifty"] = 0.0
+        result["tracking_error"] = 0.0
 
-    alert_service = AlertService()
+    # 6️⃣ Send Telegram
     message = alert_service.build_summary_message(result)
 
-    # ---------------------------------------------------
-    # 6️⃣ Print Result
-    # ---------------------------------------------------
     print("\n📊 Portfolio Valuation Result:\n")
     print(json.dumps(result, indent=2))
-    summary = f"""
-    📊 Portfolio Update
 
-    Total Value: ₹{result["total_value"]:,.0f}
-    Daily P&L %: {result["daily_pl_percent"]:.2f}%
-    """
-
-    notifier.send(summary)
     notifier.send(message)
 
 

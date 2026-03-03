@@ -4,20 +4,24 @@ import numpy as np
 
 class PerformanceService:
 
+    # --------------------------------------------
+    # Compute daily returns
+    # --------------------------------------------
     def compute_returns(self, snapshots):
-        dates = [row[0] for row in snapshots]
-        values = [row[1] for row in snapshots]
+        if not snapshots:
+            return pd.Series(dtype=float)
+
+        dates = [s.date for s in snapshots]
+        values = [s.total_value for s in snapshots]
 
         if len(values) < 2:
             return pd.Series(dtype=float)
 
         df = pd.DataFrame({"date": dates, "value": values})
 
-        # Force safe parsing
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        df = df.drop_duplicates(subset="date")
-        # Drop bad rows
         df = df.dropna(subset=["date"])
+        df = df.drop_duplicates(subset="date")
 
         df = df.sort_values("date")
         df.set_index("date", inplace=True)
@@ -26,6 +30,9 @@ class PerformanceService:
 
         return returns
 
+    # --------------------------------------------
+    # Annualized Volatility
+    # --------------------------------------------
     def annualized_volatility(self, snapshots):
         returns = self.compute_returns(snapshots)
 
@@ -34,8 +41,11 @@ class PerformanceService:
 
         return float(np.std(returns) * np.sqrt(252))
 
+    # --------------------------------------------
+    # Max Drawdown
+    # --------------------------------------------
     def max_drawdown(self, snapshots):
-        values = [row[1] for row in snapshots]
+        values = [s.total_value for s in snapshots]
 
         if len(values) < 2:
             return 0.0
@@ -45,19 +55,19 @@ class PerformanceService:
         drawdowns = (cumulative - rolling_max) / rolling_max
 
         return float(np.min(drawdowns))
-    
 
+    # --------------------------------------------
+    # Sharpe Ratio
+    # --------------------------------------------
     def sharpe_ratio(self, snapshots, risk_free_rate=0.0):
         returns = self.compute_returns(snapshots)
 
         if len(returns) < 2:
             return 0.0
 
-        # Annualized return
         mean_daily_return = np.mean(returns)
         annual_return = mean_daily_return * 252
 
-        # Annualized volatility
         volatility = self.annualized_volatility(snapshots)
 
         if volatility == 0:
@@ -66,26 +76,40 @@ class PerformanceService:
         sharpe = (annual_return - risk_free_rate) / volatility
         return float(sharpe)
 
+    # --------------------------------------------
+    # Beta
+    # --------------------------------------------
     def beta(self, portfolio_returns, benchmark_returns):
-        if len(portfolio_returns) < 2:
+        if portfolio_returns.empty or benchmark_returns.empty:
             return 0.0
 
-        aligned = portfolio_returns.align(benchmark_returns, join="inner")[0]
+        df = pd.concat(
+            [portfolio_returns, benchmark_returns],
+            axis=1,
+            join="inner"
+        )
 
-        if len(aligned) < 2:
+        if len(df) < 2:
             return 0.0
 
-        cov = np.cov(portfolio_returns, benchmark_returns)[0][1]
-        var = np.var(benchmark_returns)
+        df.columns = ["portfolio", "benchmark"]
+
+        cov = df.cov().iloc[0, 1]
+        var = df["benchmark"].var()
 
         if var == 0:
             return 0.0
 
         return float(cov / var)
 
-
+    # --------------------------------------------
+    # Alpha
+    # --------------------------------------------
     def alpha(self, portfolio_returns, benchmark_returns, risk_free_rate=0.0):
         beta = self.beta(portfolio_returns, benchmark_returns)
+
+        if portfolio_returns.empty or benchmark_returns.empty:
+            return 0.0
 
         rp = np.mean(portfolio_returns) * 252
         rm = np.mean(benchmark_returns) * 252
@@ -93,9 +117,10 @@ class PerformanceService:
         alpha = rp - (risk_free_rate + beta * (rm - risk_free_rate))
 
         return float(alpha)
-    # ----------------------------
-    # Benchmark Comparison
-    # ----------------------------
+
+    # --------------------------------------------
+    # Benchmark Analysis
+    # --------------------------------------------
     def benchmark_analysis(self, portfolio_returns, benchmark_returns):
 
         if portfolio_returns.empty or benchmark_returns.empty:
@@ -106,14 +131,11 @@ class PerformanceService:
                 "tracking_error": 0.0
             }
 
-        # Align dates
         df = pd.concat(
             [portfolio_returns, benchmark_returns],
             axis=1,
             join="inner"
         )
-
-        df.columns = ["portfolio", "benchmark"]
 
         if len(df) < 2:
             return {
@@ -123,9 +145,10 @@ class PerformanceService:
                 "tracking_error": 0.0
             }
 
+        df.columns = ["portfolio", "benchmark"]
+
         cov = df.cov().iloc[0, 1]
         var = df["benchmark"].var()
-
         beta = cov / var if var != 0 else 0.0
 
         annual_portfolio_return = df["portfolio"].mean() * 252
@@ -137,7 +160,7 @@ class PerformanceService:
 
         tracking_error = (
             (df["portfolio"] - df["benchmark"]).std()
-            * (252 ** 0.5)
+            * np.sqrt(252)
         )
 
         return {

@@ -1,6 +1,8 @@
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from domain.snapshot import Snapshot
+from datetime import datetime
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -51,11 +53,22 @@ class SnapshotCache:
 
         self.conn.commit()
 
-    def load(self):
-        cursor = self.conn.execute("""
-            SELECT date, total_value, daily_pl_percent
-            FROM snapshots
-            ORDER BY date ASC
-        """)
 
-        return cursor.fetchall()
+
+    def load(self):
+        rows = self.conn.execute(
+            "SELECT date, total_value, daily_pl_percent FROM snapshots ORDER BY date"
+        ).fetchall()
+
+        snapshots = []
+
+        for row in rows:
+            snapshots.append(
+                Snapshot(
+                    date=datetime.strptime(row[0], "%Y-%m-%d").date(),
+                    total_value=row[1],
+                    daily_pl_percent=row[2]
+                )
+            )
+
+        return snapshots

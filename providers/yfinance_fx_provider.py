@@ -1,14 +1,15 @@
 import yfinance as yf
 from providers.fx_provider import FXProvider
+from providers.base_market_data_provider import MarketDataProvider
 
 
-class YFinanceFXProvider(FXProvider):
 
-    def get_rate(self, from_currency: str, to_currency: str) -> float:
-        if from_currency == to_currency:
-            return 1.0
+class YFinanceProvider(MarketDataProvider):
 
-        pair = f"{from_currency}{to_currency}=X"
-        data = yf.Ticker(pair).history(period="1d")
+    def get_price(self, symbol: str):
+        data = yf.download(symbol, period="1d", progress=False)
+
+        if data.empty:
+            raise ValueError(f"No data found for {symbol}")
 
         return float(data["Close"].iloc[-1])
